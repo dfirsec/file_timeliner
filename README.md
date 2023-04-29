@@ -4,7 +4,9 @@ This script generates a timeline of files in a specified folder, optionally sort
 
 ## Installation
 
-No installation required. The script uses standard Python 3 libraries.
+The script uses standard Python 3 libraries.
+
+`pip install -r requirements.txt`
 
 ## Usage
 
