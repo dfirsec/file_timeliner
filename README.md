@@ -6,11 +6,17 @@ This script generates a timeline of files in a specified folder, optionally sort
 
 The script uses standard Python 3 libraries.
 
-`pip install -r requirements.txt`
+```text
+git clone https://github.com/dfirsec/file_timeliner.git
+
+cd file_timeliner
+
+pip install -r requirements.txt
+```
 
 ## Usage
 
-`python filetimeline.py [PATH] [OPTIONS]`
+`python file_timeliner.py [PATH] [OPTIONS]`
 
 ### Arguments
 
@@ -52,7 +58,7 @@ options:
 
 ### Example
 
-`python filetimeline.py "<PATH>" -s mtime -H -d 2 -e .pdf -g`
+`python file_timeliner.py "<PATH>" -s mtime -H -d 2 -e .pdf -g`
 
 This will generate a timeline of files in the specified folder, sorted by modification time, with human-readable times, limited to a depth of 2 subdirectories, only including files with the .pdf extension, and plotting a graph of file sizes over time.
 
