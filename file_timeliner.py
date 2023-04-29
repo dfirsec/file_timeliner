@@ -191,9 +191,11 @@ def main(args: argparse.Namespace) -> None:
         args (argparse.Namespace):
           Contains the command-line arguments passed to the script.
     """
-    if not args.output:
-        args.output = Path(__file__).parent / "filetimeline.csv"
-
+    args.output = (
+        Path(args.output)
+        if args.output
+        else Path(__file__).parent / "filetimeline.csv"
+    )
     if not Path(args.PATH).exists():
         print("Directory does not exist")
         sys.exit(1)
