@@ -6,13 +6,14 @@ This script generates a timeline of files in a specified folder, optionally sort
 
 The script uses standard Python 3 libraries.
 
-```text
-git clone https://github.com/dfirsec/file_timeliner.git
+1. Clone the repository:
+`git clone https://github.com/dfirsec/file_timeliner.git`
 
-cd file_timeliner
+2. Change to the file_timeliner directory:
+`cd file_timeliner`
 
-pip install -r requirements.txt
-```
+3. Install required packages:
+`pip install -r requirements.txt`
 
 ## Usage
 
