@@ -7,17 +7,34 @@ This script generates a timeline of files in a specified folder, optionally sort
 The script uses standard Python 3 libraries.
 
 1. Clone the repository:
-`git clone https://github.com/dfirsec/file_timeliner.git`
+```text
+git clone https://github.com/dfirsec/file_timeliner.git
+```
 
-2. Change to the file_timeliner directory:
-`cd file_timeliner`
+2. Change to the project directory:
+```text
+cd file_timeliner
+```
 
-3. Install required packages:
-`pip install -r requirements.txt`
+3. Install required packages using poetry:
+
+```text
+poetry install
+```
 
 ## Usage
 
-`python file_timeliner.py [PATH] [OPTIONS]`
+1. Create the virtual environment
+
+```text
+poetry shell
+```
+
+2. Run using the following commands:
+
+```text
+python file_timeliner.py [PATH] [OPTIONS]
+```
 
 ### Arguments
 
@@ -25,21 +42,19 @@ The script uses standard Python 3 libraries.
 
 ### Options
 
-**--output** (**-o**): The output file path. If not specified, the output will be stored in a file named filetimeline.csv in the same folder as the script.
+`--output (-o)`: The output file path. If not specified, the output will be stored in a file named filetimeline.csv in the same folder as the script.
 
-**--graph**, (**-g**): Generate a graph of file sizes over time
+`--graph, (-g)`: Generate a graph of file sizes over time
 
-**--human-readable** (**-H**): Display times in human-readable format.
+`--human-readable (-H)`: Display times in human-readable format.
 
-**--sort** (**-s**): Sort files by Access Time (atime), Modification Time (mtime), or Change Time (ctime).
+`--sort (-s)`: Sort files by Access Time (atime), Modification Time (mtime), or Change Time (ctime).
 
-**--max-depth** (**-d**): Maximum depth of recursion in subdirectories. By default, the script will search all subdirectories.
+`--max-depth (-d)`: Maximum depth of recursion in subdirectories. By default, the script will search all subdirectories.
 
-**--filter-extension** (**-e**): Filter files by the specified file extension (e.g., '.txt').
+`--filter-extension (-e)`: Filter files by the specified file extension (e.g., '.txt').
 
 ```text
-Create a timeline of files
-
 positional arguments:
   PATH                  Path of the folder to create the timeline
 
@@ -57,6 +72,8 @@ options:
                         Filter files by the specified file extension (e.g., '.txt')
 ```
 
+## Create a timeline of files
+
 ### Example
 
 `python file_timeliner.py "<PATH>" -s mtime -H -d 2 -e .pdf -g`
@@ -67,11 +84,10 @@ This will generate a timeline of files in the specified folder, sorted by modifi
 
 ![Alt text](images/screenshot2.png "Zoom in to a selected file object")
 
-### Dependencies
 
-- Python 3.x
-- pandas ~= 2.0.1
-- plotly ~= 5.14.1
+## Contributing
+
+Contributions are welcome! If you find any issues or have suggestions for improvement, please create an issue or submit a pull request.
 
 ### License
 
