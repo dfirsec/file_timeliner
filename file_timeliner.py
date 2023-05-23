@@ -5,18 +5,16 @@ import contextlib
 import csv
 import logging
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List, Union
 
 import pandas as pd
-import plotly.graph_objects as go
-import plotly.io as pio
+from plotly import graph_objects as go
+from plotly import io as pio
 
 
-def get_stat(filepath: Path, human_readable: bool) -> List:
-    """
-    Get stat information from a filepath.
+def get_stat(filepath: Path, human_readable: bool) -> list:
+    """Get stat information from a filepath.
 
     Args:
         filepath (Path): Path of the file to get stat information from.
@@ -27,14 +25,14 @@ def get_stat(filepath: Path, human_readable: bool) -> List:
     """
     try:
         stat = filepath.lstat()
-    except Exception as exc:
-        logging.error(f"Error getting stat information from {filepath}: {exc}")
+    except Exception:
+        logging.exception(f"Error getting stat information from {filepath}")
         return []
 
     if human_readable:
-        atime = datetime.fromtimestamp(stat.st_atime).strftime("%Y-%m-%d %H:%M:%S")
-        mtime = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        ctime = datetime.fromtimestamp(stat.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
+        atime = datetime.fromtimestamp(stat.st_atime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        ctime = datetime.fromtimestamp(stat.st_ctime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     else:
         atime = stat.st_atime
         mtime = stat.st_mtime
@@ -49,56 +47,48 @@ def get_stat(filepath: Path, human_readable: bool) -> List:
     ]
 
 
-def create_graph(file_metadata: List[List[Any]], sort_header: str, headers: List[str]) -> None:
-    """
-    This function creates a scatter plot using data from a file, sorted by a specified header.
+def create_graph(file_metadata: list, sort_header: str, headers: list) -> None:
+    """This function creates a scatter plot using data from a file, sorted by a specified header.
 
     Args:
-        file_metadata (List[List[Any]]):
-          A list of lists containing file metadata such as name, size, access time, modified time,
-            and change time.
-        sort_header (str):
-          The column header by which the data in the graph will be sorted.
-        headers (List[str]):
-          A list of strings representing the column headers of the file metadata.
+        file_metadata (list): information about files, including their paths, sizes, and timestamps.
+        sort_header (str): The column header by which the data in the graph will be sorted.
+        headers (list): A list of column headers for the file_metadata.
     """
-    df = convert_path_to_string(file_metadata, headers)
-    if isinstance(df[sort_header][0], (int, float)):
-        for col in ["Access Time", "Modified Time", "Change Time"]:
+    dataframe = convert_path_to_string(file_metadata, headers)
+    columns = ["Access Time", "Modified Time", "Change Time"]
+
+    if isinstance(dataframe[sort_header][0], int | float):
+        for col in columns:
             with contextlib.suppress(ValueError):
-                df[col] = pd.to_datetime(df[col].astype(float), unit="s", origin="unix")
+                dataframe[col] = pd.to_datetime(dataframe[col].astype(float), unit="s", origin="unix")
     else:
-        df["Modified Time"] = pd.to_datetime(df["Modified Time"], unit="s")
-        for col in ["Access Time", "Modified Time", "Change Time"]:
-            df[col] = pd.to_datetime(df[col])
+        dataframe["Modified Time"] = pd.to_datetime(dataframe["Modified Time"], unit="s")
+        for col in columns:
+            dataframe[col] = pd.to_datetime(dataframe[col])
 
-    scatter_plot_template(df, sort_header)
+    scatter_plot_template(dataframe, sort_header)
 
 
-def convert_path_to_string(file_metadata: List[List[Any]], headers: List[str]) -> pd.DataFrame:
-    """
-    Converts the Path object in the file_metadata to a string.
+def convert_path_to_string(file_metadata: list, headers: list) -> pd.DataFrame:
+    """Converts the Path object in the file_metadata to a string.
 
     Args:
-        file_metadata (List[List[Any]]):
-          A list of lists containing information about files, including their paths, sizes, and
-            timestamps.
-        headers (List[str]):
-          A list of column headers for the file_metadata
+        file_metadata (list): information about files, including their paths, sizes, and timestamps.
+        headers (list): A list of column headers for the file_metadata.
 
     Returns:
-        A pandas DataFrame containing the file metadata, with the Path column as strings
-
+        pd.DataFrame: A pandas DataFrame containing information about files,
+        including their paths, sizes, and  timestamps.
     """
-    df = pd.DataFrame(file_metadata, columns=headers)
-    df["Path"] = df["Path"].astype(str)
-    df["Size"] = df["Size"].astype(float)
-    return df
+    dataframe = pd.DataFrame(file_metadata, columns=headers)
+    dataframe["Path"] = dataframe["Path"].astype(str)
+    dataframe["Size"] = dataframe["Size"].astype(float)
+    return dataframe
 
 
 def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
-    """
-    Creates a scatter plot using data from a dataframe and displays it using Plotly.
+    """Creates a scatter plot using data from a dataframe and displays it using Plotly.
 
     Args:
         df (pd.DataFrame):
@@ -116,11 +106,11 @@ def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
             x=df[sort_header],
             y=df["Size"],
             mode="markers",
-            marker=dict(
-                color="rgba(135, 206, 250, 0.5)",
-                line=dict(color="MediumPurple", width=1),
-                opacity=0.8,
-            ),
+            marker={
+                "color": "rgba(135, 206, 250, 0.5)",
+                "line": {"color": "MediumPurple", "width": 1},
+                "opacity": 0.8,
+            },
             text=df["Path"],
             hovertemplate=(
                 "<b>Path</b>: %{text}<br>"
@@ -139,8 +129,7 @@ def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
 
 
 def sort_argument_to_header(arg: str) -> str:
-    """
-    Returns a corresponding header string for sorting based on the argument.
+    """Returns a corresponding header string for sorting based on the argument.
 
     Args:
         arg (str): A string representing the sort argument to be converted to a header.
@@ -153,22 +142,19 @@ def sort_argument_to_header(arg: str) -> str:
     Raises:
         ValueError: If the argument is not "atime", "mtime", or "ctime".
     """
-    if arg == "atime":
-        return "Access Time"
-    elif arg == "mtime":
-        return "Modified Time"
-    elif arg == "ctime":
-        return "Change Time"
-
-    raise ValueError("Invalid argument. Must be 'atime', 'mtime', or 'ctime'.")
+    labels = {"atime": "Access Time", "mtime": "Modified Time", "ctime": "Change Time"}
+    try:
+        return labels[arg]
+    except KeyError as err:
+        message = "Invalid argument. Must be 'atime', 'mtime', or 'ctime'."
+        raise ValueError(message) from err
 
 
-def sort_key(file_info: List[Union[str, float]], sort_index: int) -> str:
-    """
-    Get the sorting key for a file metadata entry based on the sort_index.
+def sort_key(file_info: list[str | float], sort_index: int) -> str:
+    """Get the sorting key for a file metadata entry based on the sort_index.
 
     Args:
-        file_info (List[Union[str, float]]): A list containing file metadata.
+        file_info (list[str | float]): A list containing file metadata.
         sort_index (int): The index of the file_info list to use as the sorting key.
 
     Returns:
@@ -176,26 +162,20 @@ def sort_key(file_info: List[Union[str, float]], sort_index: int) -> str:
     """
     value = file_info[sort_index]
     if isinstance(value, float):
-        return datetime.utcfromtimestamp(value).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp(value, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     return value
 
 
 def main(args: argparse.Namespace) -> None:
-    """
-    Main function that takes in arguments.
+    """Main function that takes in arguments.
 
     Searches for files in a directory, extracts metadata from them, sorts the metadata
     based on user input, and writes the metadata to a CSV file.
 
     Args:
-        args (argparse.Namespace):
-          Contains the command-line arguments passed to the script.
+        args (argparse.Namespace): Contains the command-line arguments passed to the script.
     """
-    args.output = (
-        Path(args.output)
-        if args.output
-        else Path(__file__).parent / "filetimeline.csv"
-    )
+    args.output = Path(args.output) if args.output else Path(__file__).parent / "filetimeline.csv"
     if not Path(args.PATH).exists():
         print("Directory does not exist")
         sys.exit(1)
@@ -208,6 +188,7 @@ def main(args: argparse.Namespace) -> None:
         "Change Time",
     ]
 
+    print("\033[92m[1]\033[00m Collecting file metadata...")
     file_metadata = []
     for entry in Path(args.PATH).rglob("*" + ("/*" * args.max_depth) if args.max_depth is not None else "*"):
         if entry.is_file():
@@ -229,12 +210,13 @@ def main(args: argparse.Namespace) -> None:
         for metadata in file_metadata:
             writer.writerow([str(file) for file in metadata])
             count += 1
+    print(f"  -> Metadata collected on {count} files written to: {args.output}")
 
+    print("\033[92m[2]\033[00m Creating graph...")
     if args.graph:
         sort_header = sort_argument_to_header(args.sort)
         create_graph(file_metadata, sort_header, headers)
-
-    print(f"Metadata collected on {count} files written to: {args.output}")
+        print("  -> Graph created.")
 
 
 if __name__ == "__main__":
@@ -273,5 +255,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    print("Collecting file metadata...")
     main(args)
