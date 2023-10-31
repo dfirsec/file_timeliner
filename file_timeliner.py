@@ -1,11 +1,13 @@
-"""Create a timeline of files in a folder."""
+"""File timeline analyzer."""
 
 import argparse
 import contextlib
 import csv
 import logging
 import sys
-from datetime import datetime, timezone
+from collections.abc import Generator
+from datetime import UTC
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -14,14 +16,17 @@ from plotly import io as pio
 
 
 def get_stat(filepath: Path, human_readable: bool) -> list:
-    """Get stat information from a filepath.
+    """Get file statistics for a given filepath.
 
     Args:
-        filepath (Path): Path of the file to get stat information from.
-        human_readable (bool): If True, convert timestamps to human readable format.
+        filepath (Path): The path to the file.
+        human_readable (bool): Flag indicating whether to display times in human-readable format.
 
     Returns:
-        List: (PATH, SIZE, Access Time, Modified Time, Change Time)
+        list: The file metadata including filepath, size, created, modified, and access times.
+
+    Raises:
+        Exception: If there is an error getting the stat information from the filepath.
     """
     try:
         stat = filepath.lstat()
@@ -30,56 +35,57 @@ def get_stat(filepath: Path, human_readable: bool) -> list:
         return []
 
     if human_readable:
-        atime = datetime.fromtimestamp(stat.st_atime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        mtime = datetime.fromtimestamp(stat.st_mtime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        ctime = datetime.fromtimestamp(stat.st_ctime, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        ctime = datetime.fromtimestamp(getattr(stat, "st_birthtime", stat.st_ctime), UTC).strftime("%Y-%m-%d %H:%M:%S")
+        mtime = datetime.fromtimestamp(stat.st_mtime, UTC).strftime("%Y-%m-%d %H:%M:%S")
+        atime = datetime.fromtimestamp(stat.st_atime, UTC).strftime("%Y-%m-%d %H:%M:%S")
     else:
-        atime = stat.st_atime
+        ctime = getattr(stat, "st_birthtime", stat.st_ctime)
         mtime = stat.st_mtime
-        ctime = stat.st_ctime
+        atime = stat.st_atime
 
     return [
         filepath,
         stat.st_size,
-        atime,
-        mtime,
         ctime,
+        mtime,
+        atime,
     ]
 
 
-def create_graph(file_metadata: list, sort_header: str, headers: list) -> None:
-    """This function creates a scatter plot using data from a file, sorted by a specified header.
+def create_graph(file_metadata: list, sort_header: str, headers: list, human_readable: bool) -> None:
+    """Creates a graph based on file metadata.
 
     Args:
-        file_metadata (list): information about files, including their paths, sizes, and timestamps.
-        sort_header (str): The column header by which the data in the graph will be sorted.
-        headers (list): A list of column headers for the file_metadata.
+        file_metadata (list): The list of file metadata.
+        sort_header (str): The column header to sort the data by.
+        headers (list): The list of column headers.
+        human_readable (bool): Flag indicating whether to display times in human-readable format.
+
+    Returns:
+        None
     """
     dataframe = convert_path_to_string(file_metadata, headers)
-    columns = ["Access Time", "Modified Time", "Change Time"]
+    columns = ["Created Time", "Modified Time", "Access Time"]
 
-    if isinstance(dataframe[sort_header][0], int | float):
-        for col in columns:
+    for col in columns:
+        if not human_readable:
             with contextlib.suppress(ValueError):
                 dataframe[col] = pd.to_datetime(dataframe[col].astype(float), unit="s", origin="unix")
-    else:
-        dataframe["Modified Time"] = pd.to_datetime(dataframe["Modified Time"], unit="s")
-        for col in columns:
+        else:
             dataframe[col] = pd.to_datetime(dataframe[col])
 
     scatter_plot_template(dataframe, sort_header)
 
 
 def convert_path_to_string(file_metadata: list, headers: list) -> pd.DataFrame:
-    """Converts the Path object in the file_metadata to a string.
+    """Converts file metadata to a pandas DataFrame.
 
     Args:
-        file_metadata (list): information about files, including their paths, sizes, and timestamps.
-        headers (list): A list of column headers for the file_metadata.
+        file_metadata (list): The list of file metadata.
+        headers (list): The list of column headers.
 
     Returns:
-        pd.DataFrame: A pandas DataFrame containing information about files,
-        including their paths, sizes, and  timestamps.
+        pd.DataFrame: The DataFrame containing the converted file metadata.
     """
     dataframe = pd.DataFrame(file_metadata, columns=headers)
     dataframe["Path"] = dataframe["Path"].astype(str)
@@ -88,19 +94,17 @@ def convert_path_to_string(file_metadata: list, headers: list) -> pd.DataFrame:
 
 
 def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
-    """Creates a scatter plot using data from a dataframe and displays it using Plotly.
+    """Creates a scatter plot of file sizes over a specified sort header.
 
     Args:
-        df (pd.DataFrame):
-          A pandas DataFrame containing information about files, including their paths, sizes, and
-            timestamps.
-        sort_header (str):
-          The column header in the DataFrame that will be used to sort the data.
+        df (pd.DataFrame): The DataFrame containing the file data.
+        sort_header (str): The column header to sort the data by.
 
     Returns:
-        Plotly figure object.
+        go.Figure: The scatter plot figure.
     """
     fig = go.Figure()
+
     fig.add_trace(
         go.Scattergl(
             x=df[sort_header],
@@ -115,11 +119,12 @@ def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
             hovertemplate=(
                 "<b>Path</b>: %{text}<br>"
                 "<b>Size</b>: %{y}<br>"
-                "<b>Access Time</b>: %{customdata[0]}<br>"
+                "<b>Created Time</b>: %{customdata[0]}<br>"
                 "<b>Modified Time</b>: %{customdata[1]}<br>"
-                "<b>Change Time</b>: %{customdata[2]}<br>"
+                "<b>Access Time</b>: %{customdata[2]}<br>"
             ),
-            customdata=df[["Access Time", "Modified Time", "Change Time"]],
+            customdata=df[["Created Time", "Modified Time", "Access Time"]],
+            name="",
         ),
     )
 
@@ -129,105 +134,115 @@ def scatter_plot_template(df: pd.DataFrame, sort_header: str) -> go.Figure:
 
 
 def sort_argument_to_header(arg: str) -> str:
-    """Returns a corresponding header string for sorting based on the argument.
+    """Convert the sort argument to the corresponding header label.
 
     Args:
-        arg (str): A string representing the sort argument to be converted to a header.
+        arg (str): The sort argument.
 
     Returns:
-        A string that corresponds to the header name for a given sort argument. If the argument is
-        "atime", the function returns "Access Time". If the argument is "mtime", the function returns
-        "Modified Time". If the argument is "ctime", the function returns "Change Time".
+        str: The corresponding header label.
 
     Raises:
-        ValueError: If the argument is not "atime", "mtime", or "ctime".
+        ValueError: If the argument is not ctime, 'mtime', or 'atime'.
     """
-    labels = {"atime": "Access Time", "mtime": "Modified Time", "ctime": "Change Time"}
+    labels = {"ctime": "Created Time", "mtime": "Modified Time", "atime": "Access Time"}
     try:
         return labels[arg]
     except KeyError as err:
-        message = "Invalid argument. Must be 'atime', 'mtime', or 'ctime'."
+        message = "Invalid argument. Must be 'ctime', 'mtime', or 'atime'."
         raise ValueError(message) from err
 
 
 def sort_key(file_info: list[str | float], sort_index: int) -> str:
-    """Get the sorting key for a file metadata entry based on the sort_index.
+    """Generate the sort key for a file_info based on the specified sort index.
 
     Args:
-        file_info (list[str | float]): A list containing file metadata.
-        sort_index (int): The index of the file_info list to use as the sorting key.
+        file_info (list[str | float]): The file information.
+        sort_index (int): The index of the sort header.
 
     Returns:
-        str: The sorting key, formatted as a string, based on the value at sort_index
+        str: The sort key.
     """
     value = file_info[sort_index]
     if isinstance(value, float):
-        return datetime.fromtimestamp(value, timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        return datetime.fromtimestamp(value, UTC).strftime("%Y-%m-%d %H:%M:%S")
     return value
 
 
-def main(args: argparse.Namespace) -> None:
-    """Main function that takes in arguments.
+def confirm_overwrite(filepath: Path) -> bool:
+    """Prompt user for confirmation to overwrite a file."""
+    if filepath.exists():
+        return input(f"File {filepath} already exists. Overwrite? (y/n): ").lower() == "y"
+    return True
 
-    Searches for files in a directory, extracts metadata from them, sorts the metadata
-    based on user input, and writes the metadata to a CSV file.
+
+def search_files(
+    base_path: Path,
+    max_depth: int | None,
+    filter_extension: str | None = None,
+) -> Generator[Path, None, None]:
+    """Recursively searches for files in the given directory up to a maximum depth.
 
     Args:
-        args (argparse.Namespace): Contains the command-line arguments passed to the script.
+        base_path (Path): The path to start searching.
+        max_depth (Optional[int]): The maximum depth to search. None for unlimited depth.
+        filter_extension (Optional[str]): The file extension to filter by.
+
+    Yields:
+        Path: Paths to files that match the criteria.
     """
-    args.output = Path(args.output) if args.output else Path(__file__).parent / "filetimeline.csv"
-    if not Path(args.PATH).exists():
-        print("Directory does not exist")
-        sys.exit(1)
+    if max_depth is not None and max_depth < 0 and max_depth != -1:
+        return
 
-    headers = [
-        "Path",
-        "Size",
-        "Access Time",
-        "Modified Time",
-        "Change Time",
-    ]
+    for entry in base_path.iterdir():
+        if entry.is_file() and (filter_extension is None or entry.suffix == filter_extension):
+            yield entry
+        elif entry.is_dir():
+            yield from search_files(entry, None if max_depth in [None, -1] else max_depth - 1, filter_extension)
 
-    print("\033[92m[1]\033[00m Collecting file metadata...")
-    file_metadata = []
-    for entry in Path(args.PATH).rglob("*" + ("/*" * args.max_depth) if args.max_depth is not None else "*"):
-        if entry.is_file():
-            if args.filter_extension and not entry.name.endswith(args.filter_extension):
-                continue
-            objstats = get_stat(entry, args.human_readable)
-            if objstats:
-                file_metadata.append(objstats)
 
-    if args.sort:
-        sort_header = sort_argument_to_header(args.sort)
-        sort_index = headers.index(sort_header)
-        file_metadata.sort(key=lambda file_info: sort_key(file_info, sort_index))
+def write_to_csv(output_path: Path, headers: dict, file_metadata: list) -> None:
+    """Write file metadata to a CSV file.
 
-    count = 0
-    with open(args.output, "a+", newline="", encoding="utf-8") as fout:
-        writer = csv.writer(fout, delimiter="|")
-        writer.writerow(headers)
+    Args:
+        output_path: The path to the output CSV file.
+        headers: The list of column headers.
+        file_metadata: The list of file metadata.
+
+    Returns:
+        None
+    """
+    print(f"  -> Writing metadata to: {output_path!s}")
+    counter = 0
+    with output_path.open(mode="w", newline="") as csvfile:
+        csvwriter = csv.writer(csvfile, delimiter="|")
+        csvwriter.writerow(headers)
         for metadata in file_metadata:
-            writer.writerow([str(file) for file in metadata])
-            count += 1
-    print(f"  -> Metadata collected on {count} files written to: {args.output}")
-
-    print("\033[92m[2]\033[00m Creating graph...")
-    if args.graph:
-        sort_header = sort_argument_to_header(args.sort)
-        create_graph(file_metadata, sort_header, headers)
-        print("  -> Graph created.")
+            csvwriter.writerow([str(file) for file in metadata])
+            counter += 1
+    print(f"  -> Metadata collected on {counter} files written to: {output_path!s}")
 
 
-if __name__ == "__main__":
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments.
+
+    Returns:
+        argparse.Namespace: The parsed command-line arguments.
+    """
     parser = argparse.ArgumentParser(description="Create a timeline of files")
     parser.add_argument("PATH", help="Path of the folder to create the timeline")
-    parser.add_argument("--output", "-o", help="Output file path")
     parser.add_argument(
-        "--graph",
-        "-g",
-        action="store_true",
-        help="Generate a graph of file sizes over time",
+        "-o",
+        "--output",
+        default="default",
+        help="Output file path. Defaults to 'file_timeline.csv' in the root directory.",
+    )
+    parser.add_argument(
+        "--sort",
+        "-s",
+        choices=["atime", "mtime", "ctime"],
+        default="atime",
+        help="Sort by Access Time (atime), Modified Time (mtime), or Change Time (ctime)",
     )
     parser.add_argument(
         "--human-readable",
@@ -236,16 +251,11 @@ if __name__ == "__main__":
         help="Display times in human-readable format",
     )
     parser.add_argument(
-        "--sort",
-        "-s",
-        choices=["atime", "mtime", "ctime"],
-        help="Sort by Access Time (atime), Modified Time (mtime), or Change Time (ctime)",
-    )
-    parser.add_argument(
         "--max-depth",
         "-d",
+        default=1,
         type=int,
-        help="Maximum depth of recursion in subdirectories",
+        help="Maximum depth of recursion in subdirectories. Set to -1 for unlimited depth.",
     )
     parser.add_argument(
         "--filter-extension",
@@ -253,6 +263,61 @@ if __name__ == "__main__":
         type=str,
         help="Filter files by the specified file extension (e.g., '.txt')",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
+
+
+def main(args: argparse.Namespace) -> None:
+    """Run main file timeliner function.
+
+    Args:
+        args (argparse.Namespace): The command-line arguments parsed by argparse.
+
+    Returns:
+        None
+    """
+    root = Path(__file__).parent.resolve()
+    base_path = Path(args.PATH)
+
+    if not base_path.exists():
+        print("Directory does not exist")
+        sys.exit(1)
+
+    # The headers for the CSV file
+    headers = [
+        "Path",
+        "Size",
+        "Created Time",
+        "Modified Time",
+        "Access Time",
+    ]
+
+    print("\033[92m[1]\033[00m Collecting file metadata...")
+    file_metadata = [
+        get_stat(entry, args.human_readable) for entry in search_files(base_path, args.max_depth, args.filter_extension)
+    ]
+
+    if not file_metadata:
+        print("No files found matching the criteria.")
+        sys.exit(1)
+
+    if args.sort:
+        sort_header = sort_argument_to_header(args.sort)
+        sort_index = headers.index(sort_header)
+        file_metadata.sort(key=lambda file_info: sort_key(file_info, sort_index))
+
+    output_path = Path(root) / "file_timeline.csv" if args.output.lower() == "default" else Path(args.output)
+    if output_path.exists() and not confirm_overwrite(output_path):
+        print("Operation cancelled.")
+        sys.exit(1)
+    write_to_csv(output_path, headers, file_metadata)
+
+    print("\033[92m[2]\033[00m Creating graph...")
+    sort_header = sort_argument_to_header(args.sort)
+    create_graph(file_metadata, sort_header, headers, args.human_readable)
+    print("  -> Graph created.")
+
+
+if __name__ == "__main__":
+    args = parse_args()
 
     main(args)
