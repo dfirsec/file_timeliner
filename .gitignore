@@ -1,1 +1,2 @@
-filetimeline.csv
+*.csv
+*.lock
