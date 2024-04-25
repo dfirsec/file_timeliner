@@ -13,6 +13,10 @@ from pathlib import Path
 import pandas as pd
 from plotly import graph_objects as go
 from plotly import io as pio
+from rich.console import Console
+from rich.prompt import Prompt
+
+console = Console()
 
 
 def get_stat(filepath: Path, human_readable: bool) -> list:
@@ -172,7 +176,7 @@ def sort_key(file_info: list[str | float], sort_index: int) -> str:
 def confirm_overwrite(filepath: Path) -> bool:
     """Prompt user for confirmation to overwrite a file."""
     if filepath.exists():
-        return input(f"File {filepath} already exists. Overwrite? (y/n): ").lower() == "y"
+        return Prompt.ask("Timeline file already exists. OK to overwrite? (y/n)", default="n").lower() == "y"
     return True
 
 
@@ -208,19 +212,16 @@ def write_to_csv(output_path: Path, headers: dict, file_metadata: list) -> None:
         output_path: The path to the output CSV file.
         headers: The list of column headers.
         file_metadata: The list of file metadata.
-
-    Returns:
-        None
     """
-    print(f"  -> Writing metadata to: {output_path!s}")
     counter = 0
-    with output_path.open(mode="w", newline="") as csvfile:
+    with output_path.open(mode="w", newline="", encoding="utf-8") as csvfile:
         csvwriter = csv.writer(csvfile, delimiter="|")
         csvwriter.writerow(headers)
         for metadata in file_metadata:
             csvwriter.writerow([str(file) for file in metadata])
             counter += 1
-    print(f"  -> Metadata collected on {counter} files written to: {output_path!s}")
+    console.print(f"  :gear: Metadata collected on {counter} files.")
+    console.print(f"  :gear: Writing metadata to: [yellow]{output_path.name}[/yellow]")
 
 
 def parse_args() -> argparse.Namespace:
@@ -291,10 +292,10 @@ def main(args: argparse.Namespace) -> None:
         "Access Time",
     ]
 
-    print("\033[92m[1]\033[00m Collecting file metadata...")
-    file_metadata = [
-        get_stat(entry, args.human_readable) for entry in search_files(base_path, args.max_depth, args.filter_extension)
-    ]
+    with console.status("Collecting file metadata..."):
+        file_metadata = [
+            get_stat(entry, args.human_readable) for entry in search_files(base_path, args.max_depth, args.filter_extension)
+        ]
 
     if not file_metadata:
         print("No files found matching the criteria.")
@@ -311,10 +312,10 @@ def main(args: argparse.Namespace) -> None:
         sys.exit(1)
     write_to_csv(output_path, headers, file_metadata)
 
-    print("\033[92m[2]\033[00m Creating graph...")
-    sort_header = sort_argument_to_header(args.sort)
-    create_graph(file_metadata, sort_header, headers, args.human_readable)
-    print("  -> Graph created.")
+    with console.status("Creating graph..."):
+        sort_header = sort_argument_to_header(args.sort)
+        create_graph(file_metadata, sort_header, headers, args.human_readable)
+    console.print("  :gear: Graph created.")
 
 
 if __name__ == "__main__":
