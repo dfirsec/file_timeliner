@@ -14,7 +14,7 @@ import pandas as pd
 from plotly import graph_objects as go
 from plotly import io as pio
 from rich.console import Console
-from rich.prompt import Prompt
+from rich.prompt import Confirm
 
 console = Console()
 
@@ -175,9 +175,13 @@ def sort_key(file_info: list[str | float], sort_index: int) -> str:
 
 def confirm_overwrite(filepath: Path) -> bool:
     """Prompt user for confirmation to overwrite a file."""
-    if filepath.exists():
-        return Prompt.ask("Timeline file already exists. OK to overwrite? (y/n)", default="n").lower() == "y"
-    return True
+    try:
+        if filepath.exists():
+            return Confirm.ask("Timeline file already exists. OK to overwrite?", default=False)
+    except KeyboardInterrupt:
+        return False
+    else:
+        return True
 
 
 def search_files(
@@ -294,7 +298,8 @@ def main(args: argparse.Namespace) -> None:
 
     with console.status("Collecting file metadata..."):
         file_metadata = [
-            get_stat(entry, args.human_readable) for entry in search_files(base_path, args.max_depth, args.filter_extension)
+            get_stat(entry, args.human_readable)
+            for entry in search_files(base_path, args.max_depth, args.filter_extension)
         ]
 
     if not file_metadata:
